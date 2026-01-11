@@ -1,3 +1,5 @@
+DEV?=/dev/sda
+
 all:
 	clang \
 	-target x86_64-windows \
@@ -28,7 +30,14 @@ all:
 	sudo umount /tmp/uefi-mount
 	rm -rf /tmp/uefi-mount
 
-
+burn: all
+	@echo "/!\ YOU ARE ABOUT TO WRITE uefi.img TO $(DEV) /!\\"
+	@read -p "Type YES to continue: " ans; \
+	if [ "$$ans" != "YES" ]; then \
+		echo "Aborted."; \
+		exit 1; \
+	fi
+	sudo dd if=uefi.img of=$(DEV) status=progress conv=fsync
 
 
 run:
