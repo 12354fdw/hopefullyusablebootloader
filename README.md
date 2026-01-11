@@ -9,7 +9,11 @@ Shell path (if none NONE)
 ```
 
 keybinds
+
 Enter = boot kernel
+
 S = Shutdown
+
 D = Shell
+
 F = Firmware setting
