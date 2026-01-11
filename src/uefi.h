@@ -13,6 +13,27 @@
 #define UEFI_PRINT(str) \
     ST->ConOut->OutputString(ST->ConOut, (str))
 
+__attribute__((noreturn))
+void panic(EFI_SYSTEM_TABLE *ST, CHAR16 *reason) {
+    ST->ConOut->SetAttribute(ST->ConOut,
+        EFI_LIGHTRED | EFI_BACKGROUND_BLACK);
+
+    ST->ConOut->OutputString(
+        ST->ConOut,
+        L"\r\nOH SHIT OH FUCK SOMETHING WENT WRONG\r\n"
+    );
+
+    ST->ConOut->OutputString(ST->ConOut, reason);
+    ST->ConOut->OutputString(ST->ConOut, L"\r\n");
+
+    // firmware-friendly halt
+    while (1) {
+        ST->BootServices->Stall(1000000);
+    }
+}
+
+#define PANIC(msg) panic(ST, msg)
+
 // GUIDs
 // EFI Loaded Image Protocol GUID
 EFI_GUID gEfiLoadedImageProtocolGuid = 
@@ -70,14 +91,7 @@ MountImageVolume(
 
     // Fall back: nothing matched, just pick first FS
     if (HandleCount > 0) {
-        Status = BS->HandleProtocol(
-            Handles[0],
-            &gEfiSimpleFileSystemProtocolGuid,
-            (void **)&Fs
-        );
-        if (!EFI_ERROR(Status)) {
-            Status = Fs->OpenVolume(Fs, Root);
-        }
+        panic(ST, L"Unable to mount ESP");
     }
 
     if (Handles) BS->FreePool(Handles);
