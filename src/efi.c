@@ -8,7 +8,8 @@ EFI_STATUS EFIAPI efi_main(
     EFI_INPUT_KEY key;
     UINTN index;
 
-    UEFI_PRINT(L"hello world!");
+    UEFI_PRINT(L"hello world!\r\n");
+    SystemTable->ConOut->OutputString(SystemTable->ConOut, L"hello world!2\r\n");
 
 
     EFI_FILE_PROTOCOL *Root;
