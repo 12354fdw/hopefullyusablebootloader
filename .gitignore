@@ -1,0 +1,4 @@
+OVMF_VARS.4m.fd
+build/*
+uefi.img
+BOOTX64.EFI
