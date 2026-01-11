@@ -16,9 +16,6 @@ all:
 		/libpath:/usr/lib/gnu-efi \
 		build/efi.obj
 
-
-
-
 	dd if=/dev/zero of=uefi.img bs=1M count=64
 	mkfs.fat -F32 uefi.img
 

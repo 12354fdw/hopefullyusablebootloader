@@ -13,8 +13,14 @@
 #define UEFI_PRINT(str) \
     ST->ConOut->OutputString(ST->ConOut, (str))
 
-extern EFI_GUID gEfiLoadedImageProtocolGuid;
-extern EFI_GUID gEfiSimpleFileSystemProtocolGuid;
+// GUIDs
+// EFI Loaded Image Protocol GUID
+EFI_GUID gEfiLoadedImageProtocolGuid = 
+    {0x5B1B31A1, 0x9562, 0x11d2, {0x8E,0x3F,0x00,0xA0,0xC9,0x69,0x72,0x3B}};
+
+// EFI Simple File System Protocol GUID
+EFI_GUID gEfiSimpleFileSystemProtocolGuid =
+    {0x0964E5B2, 0x6459, 0x11D2, {0x8E,0x39,0x00,0xA0,0xC9,0x69,0x72,0x3B}};
 
 static EFI_STATUS
 MountImageVolume(
@@ -22,6 +28,7 @@ MountImageVolume(
     EFI_SYSTEM_TABLE *SystemTable,
     EFI_FILE_PROTOCOL **Root
 ) {
+    EFI_STATUS Status;
     EFI_LOADED_IMAGE_PROTOCOL *Image;
     EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *Fs;
 
@@ -32,13 +39,47 @@ MountImageVolume(
         (void **)&Image
     ));
 
-    /* Get Simple FS from the image's device */
-    EFI_CHECK(BS->HandleProtocol(
-        Image->DeviceHandle,
+    /* Locate all Simple File System handles */
+    EFI_HANDLE *Handles = NULL;
+    UINTN HandleCount = 0;
+    EFI_CHECK(BS->LocateHandleBuffer(
+        ByProtocol,
         &gEfiSimpleFileSystemProtocolGuid,
-        (void **)&Fs
+        NULL,
+        &HandleCount,
+        &Handles
     ));
 
-    /* Open root directory */
-    return Fs->OpenVolume(Fs, Root);
+    /* Iterate handles to find one that matches Image->DeviceHandle */
+    for (UINTN i = 0; i < HandleCount; i++) {
+        EFI_HANDLE h = Handles[i];
+        Status = BS->HandleProtocol(
+            h,
+            &gEfiSimpleFileSystemProtocolGuid,
+            (void **)&Fs
+        );
+        if (EFI_ERROR(Status)) continue;
+
+        // Check if this FS is on the same device as the loaded image
+        if (h == Image->DeviceHandle) {
+            Status = Fs->OpenVolume(Fs, Root);
+            BS->FreePool(Handles);
+            return Status;
+        }
+    }
+
+    // Fall back: nothing matched, just pick first FS
+    if (HandleCount > 0) {
+        Status = BS->HandleProtocol(
+            Handles[0],
+            &gEfiSimpleFileSystemProtocolGuid,
+            (void **)&Fs
+        );
+        if (!EFI_ERROR(Status)) {
+            Status = Fs->OpenVolume(Fs, Root);
+        }
+    }
+
+    if (Handles) BS->FreePool(Handles);
+    return Status;
 }
