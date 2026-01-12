@@ -12,7 +12,7 @@
 #define IH   ImageHandle
 
 
-#define EFI_CHECK(x) \
+#define EFI_cHECK(x) \
     do { EFI_STATUS _s = (x); if (EFI_ERROR(_s)) return _s; } while (0)
 
 #define UEFI_PRINT(str) \
@@ -31,7 +31,6 @@ void panic(EFI_SYSTEM_TABLE *ST, CHAR16 *reason) {
     ST->ConOut->OutputString(ST->ConOut, reason);
     ST->ConOut->OutputString(ST->ConOut, L"\r\n");
 
-    // firmware-friendly halt
     while (1) {
         ST->BootServices->Stall(1000000);
     }
