@@ -18,6 +18,9 @@ all:
 		/libpath:/usr/lib/gnu-efi \
 		build/efi.obj
 
+	# create config
+	echo "test\ntest\ntest" > config
+
 	dd if=/dev/zero of=uefi.img bs=1M count=64
 	mkfs.fat -F32 uefi.img
 
@@ -26,12 +29,14 @@ all:
 
 	sudo mkdir -p /tmp/uefi-mount/EFI/BOOT
 	sudo cp BOOTX64.EFI /tmp/uefi-mount/EFI/BOOT/BOOTX64.EFI
+	sudo cp config /tmp/uefi-mount/config.txt
 
 	sudo umount /tmp/uefi-mount
 	rm -rf /tmp/uefi-mount
 
 burn: all
 	@echo "/!\ YOU ARE ABOUT TO WRITE uefi.img TO $(DEV) /!\\"
+	@echo "    You can specify which device to burn to via DEV=/dev/target"
 	@read -p "Type YES to continue: " ans; \
 	if [ "$$ans" != "YES" ]; then \
 		echo "Aborted."; \

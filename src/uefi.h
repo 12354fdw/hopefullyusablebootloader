@@ -1,11 +1,16 @@
 #pragma once
 #include <efi/efi.h>
+#include <efi/efidef.h>
+#include <efi/efierr.h>
+#include <efi/efiprot.h>
+#include <efi/x86_64/efibind.h>
 
 
 #define ST   SystemTable
 #define BS   SystemTable->BootServices
 #define RT   SystemTable->RuntimeServices
 #define IH   ImageHandle
+
 
 #define EFI_CHECK(x) \
     do { EFI_STATUS _s = (x); if (EFI_ERROR(_s)) return _s; } while (0)
@@ -35,13 +40,8 @@ void panic(EFI_SYSTEM_TABLE *ST, CHAR16 *reason) {
 #define PANIC(msg) panic(ST, msg)
 
 // GUIDs
-// EFI Loaded Image Protocol GUID
-EFI_GUID gEfiLoadedImageProtocolGuid = 
-    {0x5B1B31A1, 0x9562, 0x11d2, {0x8E,0x3F,0x00,0xA0,0xC9,0x69,0x72,0x3B}};
-
-// EFI Simple File System Protocol GUID
-EFI_GUID gEfiSimpleFileSystemProtocolGuid =
-    {0x0964E5B2, 0x6459, 0x11D2, {0x8E,0x39,0x00,0xA0,0xC9,0x69,0x72,0x3B}};
+EFI_GUID gEfiLoadedImageProtocolGuid =  EFI_LOADED_IMAGE_PROTOCOL_GUID;
+EFI_GUID gEfiSimpleFileSystemProtocolGuid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
 
 static EFI_STATUS
 MountImageVolume(
@@ -49,51 +49,45 @@ MountImageVolume(
     EFI_SYSTEM_TABLE *SystemTable,
     EFI_FILE_PROTOCOL **Root
 ) {
-    EFI_STATUS Status;
-    EFI_LOADED_IMAGE_PROTOCOL *Image;
-    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *Fs;
 
-    /* Get Loaded Image Protocol */
-    EFI_CHECK(BS->HandleProtocol(
+    EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
+
+    EFI_STATUS Status;
+
+    Status = SystemTable->BootServices->OpenProtocol(
         ImageHandle,
         &gEfiLoadedImageProtocolGuid,
-        (void **)&Image
-    ));
-
-    /* Locate all Simple File System handles */
-    EFI_HANDLE *Handles = NULL;
-    UINTN HandleCount = 0;
-    EFI_CHECK(BS->LocateHandleBuffer(
-        ByProtocol,
-        &gEfiSimpleFileSystemProtocolGuid,
+        (VOID**)&LoadedImage,
+        ImageHandle,
         NULL,
-        &HandleCount,
-        &Handles
-    ));
+        EFI_OPEN_PROTOCOL_GET_PROTOCOL
+    );
 
-    /* Iterate handles to find one that matches Image->DeviceHandle */
-    for (UINTN i = 0; i < HandleCount; i++) {
-        EFI_HANDLE h = Handles[i];
-        Status = BS->HandleProtocol(
-            h,
-            &gEfiSimpleFileSystemProtocolGuid,
-            (void **)&Fs
-        );
-        if (EFI_ERROR(Status)) continue;
-
-        // Check if this FS is on the same device as the loaded image
-        if (h == Image->DeviceHandle) {
-            Status = Fs->OpenVolume(Fs, Root);
-            BS->FreePool(Handles);
-            return Status;
-        }
+    if (EFI_ERROR(Status)) {
+        PANIC(L"Unable to get loadedImage");
     }
 
-    // Fall back: nothing matched, just pick first FS
-    if (HandleCount > 0) {
-        panic(ST, L"Unable to mount ESP");
+
+    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *SFSP;
+
+    BS->HandleProtocol(
+    LoadedImage->DeviceHandle,
+    &gEfiSimpleFileSystemProtocolGuid,
+    (void**)&SFSP
+    );
+    
+    if (EFI_ERROR(Status)) {
+        PANIC(L"Unable to get SFSP");
     }
 
-    if (Handles) BS->FreePool(Handles);
-    return Status;
+    Status = uefi_call_wrapper(
+        SFSP->OpenVolume,
+        2,
+        SFSP,
+        Root
+    );
+
+
+    return EFI_SUCCESS;
 }
+
