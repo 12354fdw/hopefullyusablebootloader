@@ -1,4 +1,5 @@
 #include "uefi.h"
+#include "boot.h"
 #include <efi/efidef.h>
 #include <efi/efierr.h>
 #include <efi/efiprot.h>
@@ -39,23 +40,35 @@ EFI_STATUS EFIAPI efi_main(
     }
     UEFI_PRINT(L"Read config\r\n");
 
-    CHAR16 UnicodeDest[513];
-
-    // Manual conversion loop
-    for (UINTN i = 0; i < BufferSize; i++) {
-        UnicodeDest[i] = (CHAR16)Buffer[i]; // Zero-extends 8-bit to 16-bit
-    }
-    UnicodeDest[BufferSize] = L'\0';
     UEFI_PRINT(L"dumping config\r\n");
-    UEFI_PRINT(UnicodeDest);
+    UEFI_PRINT_ASCII(SystemTable,Buffer, 512);
     UEFI_PRINT(L"\rEOF\r\n\r\n");
 
-    
+    // parsing config
+    BOOLEAN instantBoot;
+    char kernelPath[128];
+    char initrdPath[128];
+    char cmdline[128];
+    char shellPath[128];
+
+    // byte walking parsing lol
+    char currentStr[128];
+    for (int i=0;i<BufferSize;i++) {
+        UINT8 c = Buffer[i];
+
+        if (c == '\n') { continue; }
+        
+        
+    }
+
+
+    EFI_FILE_HANDLE KernelFile;
+    //Status = Root->Ope
     
 
     // shutdown
-    config->Close(config);
     Root->Close(Root);
+    config->Close(config);
 
 
     for (;;);

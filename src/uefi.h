@@ -12,11 +12,23 @@
 #define IH   ImageHandle
 
 
-#define EFI_cHECK(x) \
+#define EFI_CHECK(x) \
     do { EFI_STATUS _s = (x); if (EFI_ERROR(_s)) return _s; } while (0)
 
 #define UEFI_PRINT(str) \
     ST->ConOut->OutputString(ST->ConOut, (str))
+
+void UEFI_PRINT_ASCII(EFI_SYSTEM_TABLE* SystemTable, UINT8* str, UINTN len) {
+    CHAR16 destBuffer[513];
+    if (len > 512) {len = 512;}
+
+    for (UINTN i = 0; i < len; i++) {
+        destBuffer[i] = (CHAR16)str[i];
+    }
+    destBuffer[len] = L'\0';
+    SystemTable->ConOut->OutputString(SystemTable->ConOut, destBuffer);
+
+}
 
 __attribute__((noreturn))
 void panic(EFI_SYSTEM_TABLE *ST, CHAR16 *reason) {
