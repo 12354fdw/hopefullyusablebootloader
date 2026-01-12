@@ -5,6 +5,7 @@ config file format
 instant boot? Y or N
 kernel path
 initrd path (if none NONE)
+cmdline
 Shell path (if none NONE)
 ```
 
