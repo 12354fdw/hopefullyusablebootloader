@@ -28,10 +28,11 @@ EFI_STATUS EFIAPI efi_main(
     }
     UEFI_PRINT(L"Opened config\r\n");
 
+    config->SetPosition(config, 0);
+
     UINTN BufferSize = 512;
     UINT8 Buffer[512];
 
-    UEFI_PRINT(L"Rad\r\n");
     Status = config->Read(config, &BufferSize, Buffer);
     if (EFI_ERROR(Status)) {
         PANIC(L"Unable to read config");
@@ -45,7 +46,16 @@ EFI_STATUS EFIAPI efi_main(
         UnicodeDest[i] = (CHAR16)Buffer[i]; // Zero-extends 8-bit to 16-bit
     }
     UnicodeDest[BufferSize] = L'\0';
+    UEFI_PRINT(L"dumping config\r\n");
     UEFI_PRINT(UnicodeDest);
+    UEFI_PRINT(L"\rEOF\r\n\r\n");
+
+    
+    
+
+    // shutdown
+    config->Close(config);
+    Root->Close(Root);
 
 
     for (;;);

@@ -19,7 +19,7 @@ all:
 		build/efi.obj
 
 	# create config
-	echo "test\ntest\ntest" > config
+	echo "lolololololol" > config
 
 	dd if=/dev/zero of=uefi.img bs=1M count=64
 	mkfs.fat -F32 uefi.img
