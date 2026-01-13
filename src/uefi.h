@@ -37,7 +37,7 @@ void panic(EFI_SYSTEM_TABLE *ST, CHAR16 *reason) {
 
     ST->ConOut->OutputString(
         ST->ConOut,
-        L"\r\nOH SHIT OH FUCK SOMETHING WENT WRONG\r\n"
+        L"\r\nOH SHIT OH FUCK SOMETHING WENT WRONG (REBOOT TO RESET)\r\n"
     );
 
     ST->ConOut->OutputString(ST->ConOut, reason);

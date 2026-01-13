@@ -15,7 +15,7 @@ typedef struct config {
     char shellPath[128];
 } config;
 
-config parseConfig(UINT8* buffer, UINTN len) {
+config parseConfig(EFI_SYSTEM_TABLE *SystemTable,UINT8* buffer, UINTN len) {
     config conf = {};
 
     // byte walking parsing
@@ -28,7 +28,8 @@ config parseConfig(UINT8* buffer, UINTN len) {
     int parsingTarget=0;
 
     UINT8 parsingStr[128];
-    int ptr;
+    memset(parsingStr, 0, sizeof(parsingStr));
+    int ptr = 0;
 
     if (buffer[0]=='Y') {
         conf.instantBoot = TRUE;
@@ -36,16 +37,17 @@ config parseConfig(UINT8* buffer, UINTN len) {
         conf.instantBoot = FALSE;
     }
 
-    for (UINT8 i=2;i<len;i++) {
+    for (UINTN i=2;i<len;i++) {
         UINT8 c = buffer[i];
 
         // handle new line
         // a manditory new line at the end is needed lol (this is not a bug)
+
+        if (c == '\r') continue;
         if (c == '\n') {
 
+            parsingStr[ptr] = '\0';
             ptr++;
-            parsingStr[ptr] == '\0';
-
             if (parsingTarget==0) memcpy(conf.kernelPath,parsingStr,ptr);
             if (parsingTarget==1) memcpy(conf.initrdPath,parsingStr,ptr);
             if (parsingTarget==2) memcpy(conf.cmdline,parsingStr,ptr);
@@ -56,6 +58,9 @@ config parseConfig(UINT8* buffer, UINTN len) {
             parsingTarget++;
             continue;
         }
+
+        if (c == 0) continue;
+        if (ptr > sizeof(parsingStr) - 1) PANIC(L"prevented oob on parseConfig!");
         parsingStr[ptr] = c;
         ptr++;
     }

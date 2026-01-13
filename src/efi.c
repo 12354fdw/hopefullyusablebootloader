@@ -27,6 +27,10 @@ EFI_STATUS EFIAPI efi_main(
     if (EFI_ERROR(Status)) {
         PANIC(L"Unable to open config!");
     }
+
+    if (Status == EFI_NOT_FOUND) {
+        PANIC(L"Unable to open config! (not found)");
+    }
     UEFI_PRINT(L"Opened config\r\n");
 
     config->SetPosition(config, 0);
@@ -42,8 +46,8 @@ EFI_STATUS EFIAPI efi_main(
     }
     UEFI_PRINT(L"Read config\r\n");
 
-    struct config conf = parseConfig(Buffer, 512);
-    UEFI_PRINT(L"parsed config\r\n\r\n");
+    struct config conf = parseConfig(SystemTable,Buffer, 512);
+    UEFI_PRINT(L"Parsed config\r\n\r\n");
 
     // config dump
     UEFI_PRINT(L"dumping config\r\n");
@@ -58,7 +62,7 @@ EFI_STATUS EFIAPI efi_main(
     UEFI_PRINT_ASCII(SystemTable, conf.kernelPath,128);
     UEFI_PRINT(L"\r\n");
 
-    UEFI_PRINT(L"inirdPath=");
+    UEFI_PRINT(L"initrdPath=");
     UEFI_PRINT_ASCII(SystemTable, conf.initrdPath,128);
     UEFI_PRINT(L"\r\n");
 
@@ -69,6 +73,8 @@ EFI_STATUS EFIAPI efi_main(
     UEFI_PRINT(L"shellPath=");
     UEFI_PRINT_ASCII(SystemTable, conf.shellPath,128);
     UEFI_PRINT(L"\r\n");
+
+    PANIC(L"UNABLE TO LOAD KERNEL");
 
 
 
