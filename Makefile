@@ -1,6 +1,6 @@
 DEV?=/dev/sda
 
-all:
+all: 
 	clang \
 	-target x86_64-windows \
 	-ffreestanding \
@@ -19,7 +19,7 @@ all:
 		build/efi.obj
 
 	# create config
-	echo "lolololololol" > config
+	#echo "lolololololol" > config
 
 	dd if=/dev/zero of=uefi.img bs=1M count=64
 	mkfs.fat -F32 uefi.img
@@ -45,7 +45,7 @@ burn: all
 	sudo dd if=uefi.img of=$(DEV) status=progress conv=fsync
 
 
-run:
+run: all
 	qemu-system-x86_64 \
 	-drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/x64/OVMF_CODE.4m.fd \
 	-drive if=pflash,format=raw,file=OVMF_VARS.4m.fd \

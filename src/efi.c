@@ -34,32 +34,42 @@ EFI_STATUS EFIAPI efi_main(
     UINTN BufferSize = 512;
     UINT8 Buffer[512];
 
+    memset(Buffer,0,512);
+
     Status = config->Read(config, &BufferSize, Buffer);
     if (EFI_ERROR(Status)) {
         PANIC(L"Unable to read config");
     }
     UEFI_PRINT(L"Read config\r\n");
 
+    struct config conf = parseConfig(Buffer, 512);
+    UEFI_PRINT(L"parsed config\r\n\r\n");
+
+    // config dump
     UEFI_PRINT(L"dumping config\r\n");
-    UEFI_PRINT_ASCII(SystemTable,Buffer, 512);
-    UEFI_PRINT(L"\rEOF\r\n\r\n");
 
-    // parsing config
-    BOOLEAN instantBoot;
-    char kernelPath[128];
-    char initrdPath[128];
-    char cmdline[128];
-    char shellPath[128];
-
-    // byte walking parsing lol
-    char currentStr[128];
-    for (int i=0;i<BufferSize;i++) {
-        UINT8 c = Buffer[i];
-
-        if (c == '\n') { continue; }
-        
-        
+    if (conf.instantBoot) {
+        UEFI_PRINT(L"instantBoot=TRUE\r\n");
+    } else {
+        UEFI_PRINT(L"instantBoot=FALSE\r\n");
     }
+
+    UEFI_PRINT(L"kernelPath=");
+    UEFI_PRINT_ASCII(SystemTable, conf.kernelPath,128);
+    UEFI_PRINT(L"\r\n");
+
+    UEFI_PRINT(L"inirdPath=");
+    UEFI_PRINT_ASCII(SystemTable, conf.initrdPath,128);
+    UEFI_PRINT(L"\r\n");
+
+    UEFI_PRINT(L"cmdline=");
+    UEFI_PRINT_ASCII(SystemTable, conf.cmdline,128);
+    UEFI_PRINT(L"\r\n");
+
+    UEFI_PRINT(L"shellPath=");
+    UEFI_PRINT_ASCII(SystemTable, conf.shellPath,128);
+    UEFI_PRINT(L"\r\n");
+
 
 
     EFI_FILE_HANDLE KernelFile;
