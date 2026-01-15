@@ -4,6 +4,7 @@
 #include <efi/efierr.h>
 #include <efi/efiprot.h>
 #include <efi/x86_64/efibind.h>
+#include "util.h"
 
 
 #define ST   SystemTable
@@ -48,7 +49,27 @@ void panic(EFI_SYSTEM_TABLE *ST, CHAR16 *reason) {
     }
 }
 
+__attribute__((noreturn))
+void warn(EFI_SYSTEM_TABLE *ST, CHAR16 *reason) {
+    ST->ConOut->SetAttribute(ST->ConOut,
+        EFI_YELLOW | EFI_BACKGROUND_BLACK);
+
+    ST->ConOut->OutputString(
+        ST->ConOut,
+        L"\r\nOH SHIT OH FUCK SOMETHING ALMOST WENT WRONG\r\n"
+    );
+
+    ST->ConOut->OutputString(ST->ConOut, reason);
+    ST->ConOut->OutputString(ST->ConOut, L"\r\n");
+
+    ST->ConOut->SetAttribute(ST->ConOut,
+        EFI_LIGHTGRAY | EFI_BACKGROUND_BLACK);
+
+    ST->BootServices->Stall(1000000);
+}
+
 #define PANIC(msg) panic(ST, msg)
+#define WARN(msg) warn(ST, msg)
 
 // GUIDs
 EFI_GUID gEfiLoadedImageProtocolGuid =  EFI_LOADED_IMAGE_PROTOCOL_GUID;

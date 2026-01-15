@@ -1,11 +1,12 @@
 #include "uefi.h"
 #include "std.h"
+#include "util.h"
+#include <efi/efidef.h>
+#include <efi/efidevp.h>
+#include <efi/efiprot.h>
+#include <efi/x86_64/efibind.h>
 
-typedef enum {
-    KERNEL_UEFI,
-    KERNEL_VMLINUX,
-    KERNEL_VMLINUZ
-} KERNEL_TYPE;
+#include "devPath.h"
 
 typedef struct config {
     BOOLEAN instantBoot;
@@ -68,16 +69,61 @@ config parseConfig(EFI_SYSTEM_TABLE *SystemTable,UINT8* buffer, UINTN len) {
     return conf;
 }
 
-KERNEL_TYPE detectKernel(UINT8 *buf) {
-    if (buf[0] == 'M' && buf[1] == 'Z')
-        return KERNEL_UEFI;
+void BOOT_KERNEL_EFI(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
+    EFI_STATUS Status;
 
-    if (buf[0] == 0x7F && buf[1] == 'E' && buf[2] == 'L' && buf[3] == 'F') {return KERNEL_VMLINUX;}
+    CHAR16 kernPath[128];
 
-    // if none assume vmlinuz
-    return KERNEL_VMLINUZ;
-}
+    ASCII_TO_CHAR16(conf.kernelPath, kernPath, 128);
+    EFI_DEVICE_PATH_PROTOCOL* kernDevPath = MakeFileDevicePath(ImageHandle, SystemTable, L"EFI\\BOOT\\BOOTX64.EFI");
 
-void BOOT_KERNEL_UEFI() {
+    EFI_HANDLE kernHandle = NULL;
+    CHAR16 *CmdLine;
+    CONST CHAR16 *CmdTemplate =
+        L"root=/dev/sda rw "
+        L"earlycon=efifb "
+        L"earlyprintk=efi "
+        L"debug";
+
+    UINTN CmdSize = (StrLen16(CmdTemplate) + 1) * sizeof(CHAR16);
+
+    Status = BS->AllocatePool(
+        EfiBootServicesData,
+        CmdSize,
+        (void **)&CmdLine
+    );
+
+    if (EFI_ERROR(Status)) {
+        PANIC(L"AllocatePool failed");
+    }
+
+    memcpy(CmdLine, CmdTemplate, CmdSize);
     
+    Status = BS->LoadImage(
+        FALSE,
+        ImageHandle,
+        kernDevPath,
+        NULL,
+        0,
+        &kernHandle
+    );
+
+    EFI_LOADED_IMAGE_PROTOCOL *Loaded;
+
+    BS->HandleProtocol(
+        kernHandle,
+        &gEfiLoadedImageProtocolGuid,
+        (void **)&Loaded
+    );
+
+    Loaded->LoadOptions     = CmdLine;
+    Loaded->LoadOptionsSize = CmdSize;
+
+
+    if (EFI_ERROR(Status)) {
+        PANIC(L"Unable to load kernel");
+    }
+
+
+    Status = BS->StartImage(kernHandle, NULL, NULL);
 }

@@ -9,11 +9,7 @@ EFI_STATUS EFIAPI efi_main(
     EFI_HANDLE ImageHandle,
     EFI_SYSTEM_TABLE *SystemTable
 ) {
-
     EFI_STATUS Status;
-
-    EFI_INPUT_KEY key;
-    UINTN index;
 
     UEFI_PRINT(L"Attempting to mount ESP\r\n");
 
@@ -21,6 +17,7 @@ EFI_STATUS EFIAPI efi_main(
     MountImageVolume(ImageHandle, SystemTable, &Root);
     UEFI_PRINT(L"Mounted ESP\r\n");
 
+    UEFI_PRINT(L"Attempting to open config (if hangs config.txt does not exists) \r\n");
     EFI_FILE_HANDLE config;
     Status = Root->Open(Root, &config, L"\\config.txt",EFI_FILE_MODE_READ,0);
 
@@ -28,9 +25,6 @@ EFI_STATUS EFIAPI efi_main(
         PANIC(L"Unable to open config!");
     }
 
-    if (Status == EFI_NOT_FOUND) {
-        PANIC(L"Unable to open config! (not found)");
-    }
     UEFI_PRINT(L"Opened config\r\n");
 
     config->SetPosition(config, 0);
@@ -74,20 +68,35 @@ EFI_STATUS EFIAPI efi_main(
     UEFI_PRINT_ASCII(SystemTable, conf.shellPath,128);
     UEFI_PRINT(L"\r\n");
 
-    PANIC(L"UNABLE TO LOAD KERNEL");
-
-
-
-    EFI_FILE_HANDLE KernelFile;
-    //Status = Root->Ope
     
+    EFI_INPUT_KEY key;
+    UINTN index;
+    
+    UEFI_PRINT(L"\r\n\r\nBOOTING\r\n");
+    BOOT_KERNEL_EFI(conf, Root, ImageHandle, SystemTable);
+    UEFI_PRINT(L"kernel finished");
+
+    // WAIT FOR KEY
+    SystemTable->BootServices->WaitForEvent(
+        1,
+        &SystemTable->ConIn->WaitForKey,
+        &index
+    );
+
+    // Read the key (required after WaitForKey)
+    SystemTable->ConIn->ReadKeyStroke(
+        SystemTable->ConIn,
+        &key
+    );
+
+    //EFI_FILE_HANDLE KernelFile;
+    //Status = Root->Ope
+
+    //PANIC(L"WIP");
 
     // shutdown
-    Root->Close(Root);
-    config->Close(config);
-
-
-    for (;;);
+    //config->Close(config);
+    //Root->Close(Root);
 
     //SystemTable->BootServices->Stall(5 * 1000 * 1000);
     return EFI_SUCCESS;

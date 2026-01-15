@@ -21,7 +21,7 @@ all:
 	# create config
 	#echo "lolololololol" > config
 
-	dd if=/dev/zero of=uefi.img bs=1M count=64
+	dd if=/dev/zero of=uefi.img bs=1M count=512
 	mkfs.fat -F32 uefi.img
 
 	mkdir -p /tmp/uefi-mount
@@ -30,6 +30,7 @@ all:
 	sudo mkdir -p /tmp/uefi-mount/EFI/BOOT
 	sudo cp BOOTX64.EFI /tmp/uefi-mount/EFI/BOOT/BOOTX64.EFI
 	sudo cp config /tmp/uefi-mount/config.txt
+	sudo cp /boot/vmlinuz-linux-zen /tmp/uefi-mount/kern
 
 	sudo umount /tmp/uefi-mount
 	rm -rf /tmp/uefi-mount
