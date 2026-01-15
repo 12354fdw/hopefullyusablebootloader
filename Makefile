@@ -1,26 +1,8 @@
 DEV?=/dev/sda
 
-all: 
-	clang \
-	-target x86_64-windows \
-	-ffreestanding \
-	-fno-stack-protector \
-	-mno-red-zone \
-	-I/usr/include/ \
-	-I/usr/include/efi/x86_64 \
-	-c src/efi.c -o build/efi.obj
+all: format
 
-	lld-link \
-		/subsystem:efi_application \
-		/entry:efi_main \
-		/nodefaultlib \
-		/out:BOOTX64.EFI \
-		/libpath:/usr/lib/gnu-efi \
-		build/efi.obj
-
-	# create config
-	#echo "lolololololol" > config
-
+format: compile
 	dd if=/dev/zero of=uefi.img bs=1M count=512
 	mkfs.fat -F32 uefi.img
 
@@ -30,10 +12,44 @@ all:
 	sudo mkdir -p /tmp/uefi-mount/EFI/BOOT
 	sudo cp BOOTX64.EFI /tmp/uefi-mount/EFI/BOOT/BOOTX64.EFI
 	sudo cp config /tmp/uefi-mount/config.txt
-	sudo cp /boot/vmlinuz-linux-zen /tmp/uefi-mount/kern
+	sudo cp /home/bob/Documents/linux/arch/x86/boot/bzImage /tmp/uefi-mount/kern.kern
+#	sudo cp /boot/initramfs-linux-zen.img /tmp/uefi-mount/initrd.img
 
 	sudo umount /tmp/uefi-mount
 	rm -rf /tmp/uefi-mount
+
+compile:
+	clang \
+		-target x86_64-unknown-linux-gnu \
+		-ffreestanding \
+		-fno-stack-protector \
+		-fno-stack-check \
+		-fno-pic \
+		-fPIC \
+		-mno-red-zone \
+		-fshort-wchar \
+		-I/usr/include \
+		-I/usr/include/efi \
+		-I/usr/include/efi/x86_64 \
+		-c src/efi.c -o build/efi.o
+
+	ld.lld \
+		-shared \
+		-Bsymbolic \
+		-nostdlib \
+		-znocombreloc \
+		-T /usr/lib/elf_x86_64_efi.lds \
+		/usr/lib/crt0-efi-x86_64.o \
+		build/efi.o \
+		/usr/lib/libgnuefi.a \
+		/usr/lib/libefi.a \
+		-o build/efi.so
+
+	objcopy \
+		-j .text -j .sdata -j .data -j .rodata -j .dynamic -j .dynsym -j .rel -j .rela -j .rel.* -j .rela.* -j .reloc \
+		--target=efi-app-x86_64 \
+		--subsystem=10 \
+		build/efi.so BOOTX64.EFI
 
 burn: all
 	@echo "/!\ YOU ARE ABOUT TO WRITE uefi.img TO $(DEV) /!\\"

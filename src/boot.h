@@ -1,23 +1,23 @@
 #include "uefi.h"
-#include "std.h"
+#include "lbp.h"
+
 #include "util.h"
+#include <efi/efi.h>
 #include <efi/efidef.h>
-#include <efi/efidevp.h>
-#include <efi/efiprot.h>
+#include <efi/efierr.h>
+#include <efi/efilib.h>
 #include <efi/x86_64/efibind.h>
 
-#include "devPath.h"
-
-typedef struct config {
+struct config {
     BOOLEAN instantBoot;
     char kernelPath[128];
     char initrdPath[128];
     char cmdline[128];
     char shellPath[128];
-} config;
+};
 
-config parseConfig(EFI_SYSTEM_TABLE *SystemTable,UINT8* buffer, UINTN len) {
-    config conf = {};
+struct config parseConfig(EFI_SYSTEM_TABLE *SystemTable,UINT8* buffer, UINTN len) {
+    struct config conf = {};
 
     // byte walking parsing
     /*
@@ -28,8 +28,8 @@ config parseConfig(EFI_SYSTEM_TABLE *SystemTable,UINT8* buffer, UINTN len) {
     */
     int parsingTarget=0;
 
-    UINT8 parsingStr[128];
-    memset(parsingStr, 0, sizeof(parsingStr));
+    char parsingStr[128];
+    SetMem(parsingStr, sizeof(parsingStr), 0);
     int ptr = 0;
 
     if (buffer[0]=='Y') {
@@ -38,68 +38,133 @@ config parseConfig(EFI_SYSTEM_TABLE *SystemTable,UINT8* buffer, UINTN len) {
         conf.instantBoot = FALSE;
     }
 
-    for (UINTN i=2;i<len;i++) {
+    UINTN i = 0;
+
+    while (i < len && buffer[i] != '\n') i++;
+    if (i < len) i++;
+
+    for (; i < len; i++) {
         UINT8 c = buffer[i];
 
-        // handle new line
-        // a manditory new line at the end is needed lol (this is not a bug)
-
         if (c == '\r') continue;
+
         if (c == '\n') {
+            if (parsingTarget >= 4) PANIC(L"Too many lines");
 
             parsingStr[ptr] = '\0';
-            ptr++;
-            if (parsingTarget==0) memcpy(conf.kernelPath,parsingStr,ptr);
-            if (parsingTarget==1) memcpy(conf.initrdPath,parsingStr,ptr);
-            if (parsingTarget==2) memcpy(conf.cmdline,parsingStr,ptr);
-            if (parsingTarget==3) memcpy(conf.shellPath,parsingStr,ptr);
 
-            ptr=0;
-            memset(parsingStr,0,128);
+            if (parsingTarget == 0) memcpy(conf.kernelPath, parsingStr, ptr + 1);
+            if (parsingTarget == 1) memcpy(conf.initrdPath, parsingStr, ptr + 1);
+            if (parsingTarget == 2) memcpy(conf.cmdline, parsingStr, ptr + 1);
+            if (parsingTarget == 3) memcpy(conf.shellPath, parsingStr, ptr + 1);
+
+            ptr = 0;
+            //Print(L"%a\r\n",parsingStr);
+            SetMem(parsingStr, sizeof(parsingStr), 0);
             parsingTarget++;
             continue;
         }
 
-        if (c == 0) continue;
-        if (ptr > sizeof(parsingStr) - 1) PANIC(L"prevented oob on parseConfig!");
-        parsingStr[ptr] = c;
-        ptr++;
+        if (ptr >= sizeof(parsingStr) - 1)
+            PANIC(L"prevented oob on parseConfig!");
+
+        parsingStr[ptr++] = (char)c;
     }
+
 
     return conf;
 }
 
+void BOOT_KERNEL_LBP(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
+    Print(L"Using path 'LBP'\r\n");
+    EFI_STATUS Status;
+
+    CHAR16 kernPathCHAR16[128];
+    ASCII_TO_CHAR16(conf.kernelPath, kernPathCHAR16, strlena(conf.kernelPath));
+
+    EFI_FILE_HANDLE kernFile;
+    Status = uefi_call_wrapper(
+        Root->Open,
+        5,
+        Root,
+        &kernFile,
+        kernPathCHAR16,
+        EFI_FILE_MODE_READ,
+        0
+    );
+
+    if (EFI_ERROR(Status)) PANIC(L"Unable to open kernFile");
+
+    // allocate space for kernel image
+    Print(L"loading kernel into memory\r\n");
+    EFI_PHYSICAL_ADDRESS kernFileAddr = 0;
+
+    EFI_FILE_INFO *info;
+    UINTN infoSize = SIZE_OF_EFI_FILE_INFO + 256;
+
+    uefi_call_wrapper(BS->AllocatePool, 3, EfiLoaderData, infoSize, (void **)&info);
+
+    Status = uefi_call_wrapper(kernFile->GetInfo, 4,
+        kernFile,
+        &gEfiFileInfoGuid,
+        &infoSize,
+        info
+    );
+
+    if (EFI_ERROR(Status)) PANIC(L"kernFile getinfo failed");
+
+    UINTN kernFileSize = info->FileSize;
+
+    uefi_call_wrapper(BS->AllocatePages, 4,
+        AllocateAnyPages,
+        EfiLoaderData,
+        EFI_SIZE_TO_PAGES(kernFileSize),
+        &kernFileAddr
+    );
+
+    Status = uefi_call_wrapper(kernFile->Read, 3, kernFile, &kernFileSize, kernFileAddr);
+    if (EFI_ERROR(Status)) PANIC(L"Unable to read kernFile");
+
+    struct setup_header *setupHeader = (struct setup_header *)((UINT8 *)kernFileAddr + SETUP_HEADER_OFFSET);
+
+    // verify setup_header
+
+    Print(L"verifying kernel setupHeader\r\n");
+    if (setupHeader->boot_flag != 0xAA55) PANIC(L"setupHeader->boot_flag != 0xAA55");
+    if (setupHeader->header[0] != 'H' || setupHeader->header[1] != 'd' || setupHeader->header[2] != 'r' || setupHeader->header[3] != 'S') PANIC(L"setupHeader->header != \"HdrS\"");
+    if (setupHeader->version < 0x020B) PANIC(L"kernel too old!");
+    if (!(setupHeader->xloadflags & (1 << 0))) PANIC(L"kernel does not support 64 bit!");
+
+    
+
+}
+
 void BOOT_KERNEL_EFI(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
+    Print(L"Using path 'EFI'");
     EFI_STATUS Status;
 
     CHAR16 kernPath[128];
 
     ASCII_TO_CHAR16(conf.kernelPath, kernPath, 128);
-    EFI_DEVICE_PATH_PROTOCOL* kernDevPath = MakeFileDevicePath(ImageHandle, SystemTable, L"EFI\\BOOT\\BOOTX64.EFI");
 
-    EFI_HANDLE kernHandle = NULL;
-    CHAR16 *CmdLine;
-    CONST CHAR16 *CmdTemplate =
-        L"root=/dev/sda rw "
-        L"earlycon=efifb "
-        L"earlyprintk=efi "
-        L"debug";
 
-    UINTN CmdSize = (StrLen16(CmdTemplate) + 1) * sizeof(CHAR16);
+    EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
 
-    Status = BS->AllocatePool(
-        EfiBootServicesData,
-        CmdSize,
-        (void **)&CmdLine
+    Status = uefi_call_wrapper(
+        BS->HandleProtocol,
+        3,
+        ImageHandle,
+        &gEfiLoadedImageProtocolGuid,
+        (VOID**)&LoadedImage
     );
-
     if (EFI_ERROR(Status)) {
-        PANIC(L"AllocatePool failed");
+        PANIC(L"Unable to get loadedImage");
     }
 
-    memcpy(CmdLine, CmdTemplate, CmdSize);
-    
-    Status = BS->LoadImage(
+    EFI_DEVICE_PATH_PROTOCOL* kernDevPath = FileDevicePath(LoadedImage->DeviceHandle, kernPath);
+
+    EFI_HANDLE kernHandle = NULL;
+    Status = uefi_call_wrapper(BS->LoadImage, 6,
         FALSE,
         ImageHandle,
         kernDevPath,
@@ -107,6 +172,10 @@ void BOOT_KERNEL_EFI(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE Ima
         0,
         &kernHandle
     );
+
+    if (EFI_ERROR(Status)) {
+        PANIC(L"Unable to load kernel");
+    }
 
     EFI_LOADED_IMAGE_PROTOCOL *Loaded;
 
@@ -116,14 +185,11 @@ void BOOT_KERNEL_EFI(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE Ima
         (void **)&Loaded
     );
 
-    Loaded->LoadOptions     = CmdLine;
-    Loaded->LoadOptionsSize = CmdSize;
+    CHAR16 cmdline[] = L"earlycon earlyprintk=efi loglevel=7 root=/dev/sda rw";
 
-
-    if (EFI_ERROR(Status)) {
-        PANIC(L"Unable to load kernel");
-    }
-
+    Loaded->LoadOptions = cmdline;
+    Loaded->LoadOptionsSize =
+        (StrLen(cmdline) + 1) * sizeof(CHAR16);
 
     Status = BS->StartImage(kernHandle, NULL, NULL);
 }

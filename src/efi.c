@@ -9,72 +9,78 @@ EFI_STATUS EFIAPI efi_main(
     EFI_HANDLE ImageHandle,
     EFI_SYSTEM_TABLE *SystemTable
 ) {
+    InitializeLib(ImageHandle, SystemTable);
+
     EFI_STATUS Status;
 
-    UEFI_PRINT(L"Attempting to mount ESP\r\n");
 
-    EFI_FILE_PROTOCOL *Root;
-    MountImageVolume(ImageHandle, SystemTable, &Root);
-    UEFI_PRINT(L"Mounted ESP\r\n");
+    // mount ESP
+    Print(L"Attempting to mount ESP\r\n");
 
-    UEFI_PRINT(L"Attempting to open config (if hangs config.txt does not exists) \r\n");
+    EFI_FILE_HANDLE Root = mountESP(ImageHandle);
+    if (!Root) {
+        PANIC(L"Unable to mount ESP");
+    }
+    Print(L"Mounted ESP\r\n");
+
+    // open config
+    Print(L"Attempting to open config\r\n");
     EFI_FILE_HANDLE config;
-    Status = Root->Open(Root, &config, L"\\config.txt",EFI_FILE_MODE_READ,0);
+    Status = uefi_call_wrapper(
+        Root->Open,
+        5,
+        Root,
+        &config,
+        L"\\config.txt",
+        EFI_FILE_MODE_READ,
+        0
+    );
+
 
     if (EFI_ERROR(Status)) {
         PANIC(L"Unable to open config!");
     }
 
-    UEFI_PRINT(L"Opened config\r\n");
-
-    config->SetPosition(config, 0);
+    Print(L"Opened config\r\n");
+    
+    uefi_call_wrapper(config->SetPosition, 2, config, 0);
 
     UINTN BufferSize = 512;
     UINT8 Buffer[512];
 
-    memset(Buffer,0,512);
+    SetMem(Buffer,512,0);
 
-    Status = config->Read(config, &BufferSize, Buffer);
+    Status = uefi_call_wrapper(config->Read, 3, config, &BufferSize, Buffer);
+
     if (EFI_ERROR(Status)) {
         PANIC(L"Unable to read config");
     }
-    UEFI_PRINT(L"Read config\r\n");
+    Print(L"Read config\r\n");
 
-    struct config conf = parseConfig(SystemTable,Buffer, 512);
-    UEFI_PRINT(L"Parsed config\r\n\r\n");
+    struct config conf = parseConfig(SystemTable,Buffer, BufferSize);
+    Print(L"Parsed config\r\n\r\n");
 
     // config dump
-    UEFI_PRINT(L"dumping config\r\n");
+    Print(L"dumping config\r\n");
 
     if (conf.instantBoot) {
-        UEFI_PRINT(L"instantBoot=TRUE\r\n");
+        Print(L"instantBoot=TRUE\r\n");
     } else {
-        UEFI_PRINT(L"instantBoot=FALSE\r\n");
+        Print(L"instantBoot=FALSE\r\n");
     }
 
-    UEFI_PRINT(L"kernelPath=");
-    UEFI_PRINT_ASCII(SystemTable, conf.kernelPath,128);
-    UEFI_PRINT(L"\r\n");
-
-    UEFI_PRINT(L"initrdPath=");
-    UEFI_PRINT_ASCII(SystemTable, conf.initrdPath,128);
-    UEFI_PRINT(L"\r\n");
-
-    UEFI_PRINT(L"cmdline=");
-    UEFI_PRINT_ASCII(SystemTable, conf.cmdline,128);
-    UEFI_PRINT(L"\r\n");
-
-    UEFI_PRINT(L"shellPath=");
-    UEFI_PRINT_ASCII(SystemTable, conf.shellPath,128);
-    UEFI_PRINT(L"\r\n");
+    Print(L"kernelPath=%a\r\n", conf.kernelPath);
+    Print(L"initrdPath=%a\r\n", conf.initrdPath);
+    Print(L"cmdline=%a\r\n", conf.cmdline);
+    Print(L"shellPath=%a\r\n", conf.shellPath);
 
     
     EFI_INPUT_KEY key;
     UINTN index;
     
-    UEFI_PRINT(L"\r\n\r\nBOOTING\r\n");
-    BOOT_KERNEL_EFI(conf, Root, ImageHandle, SystemTable);
-    UEFI_PRINT(L"kernel finished");
+    Print(L"\r\n\r\nBOOTING\r\n");
+    BOOT_KERNEL_LBP(conf, Root, ImageHandle, SystemTable);
+    Print(L"kernel finished \r\n");
 
     // WAIT FOR KEY
     SystemTable->BootServices->WaitForEvent(
