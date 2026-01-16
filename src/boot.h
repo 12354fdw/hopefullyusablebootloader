@@ -135,7 +135,156 @@ void BOOT_KERNEL_LBP(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE Ima
     if (setupHeader->version < 0x020B) PANIC(L"kernel too old!");
     if (!(setupHeader->xloadflags & (1 << 0))) PANIC(L"kernel does not support 64 bit!");
 
-    
+    UINT16 *mz = (UINT16 *)kernFileAddr;
+    if (*mz == 0x5A4D) Print(L"MZ header detected (EFI kernel)\r\n");
+
+
+    if (setupHeader->handover_offset == 0) PANIC(L"No EFI handover");
+
+    UINT64 kernel_entry = kernFileAddr + setupHeader->handover_offset;
+    typedef void (*handover_fn)(struct boot_params *);
+
+    // kernel entry
+    handover_fn entry = (handover_fn)kernel_entry;
+
+    // allocating boot_params
+
+    Print(L"filling out boot_params\r\n");
+
+    struct boot_params *bp;
+
+    Status = uefi_call_wrapper(BS->AllocatePages, 4,
+        AllocateAnyPages,
+        EfiLoaderData,
+        EFI_SIZE_TO_PAGES(sizeof(struct boot_params)),
+        (EFI_PHYSICAL_ADDRESS *)&bp
+    );
+
+    if (EFI_ERROR(Status)) PANIC(L"unable to allocate pages for boot_params");
+
+    if ((UINT64)bp >= 0x100000000) PANIC(L"boot_params is above 4GiB!");
+
+    SetMem(bp, sizeof(*bp), 0);
+
+    // filling out boot_params
+
+    memcpy(&bp->hdr, setupHeader, sizeof(struct setup_header));
+
+    bp->hdr.type_of_loader = 0xFF;
+    bp->hdr.loadflags |= (1 << 5);   // KEEP_SEGMENTS
+    bp->hdr.heap_end_ptr = 0xFE00;   // safe default
+    bp->hdr.ext_loader_type = 0xFF;
+    bp->hdr.ext_loader_ver  = 0x01;
+
+    bp->efi_info.efi_loader_signature = 0x34364C45; // "EL64"
+    bp->efi_info.efi_systab = (UINT32)(UINTN)SystemTable;
+    bp->efi_info.efi_systab_hi = (UINT32)(((UINTN)SystemTable) >> 32);
+
+    // cmdline
+
+    Print(L"making cmdline\r\n");
+
+    EFI_PHYSICAL_ADDRESS cmdline_phys;
+
+    UINTN cmdline_len = strlena(conf.cmdline) + 1;
+
+    Status = uefi_call_wrapper(BS->AllocatePages, 4,
+        AllocateAnyPages,
+        EfiLoaderData,
+        EFI_SIZE_TO_PAGES(cmdline_len),
+        &cmdline_phys
+    );
+    if (EFI_ERROR(Status)) PANIC(L"cmdline alloc failed");
+
+    memcpy((void*)cmdline_phys, conf.cmdline, cmdline_len);
+
+    bp->hdr.cmd_line_ptr = (UINT32)cmdline_phys;
+    bp->hdr.cmdline_size = cmdline_len;
+
+    Print(L"getting memory map\r\nand also Goodbye UEFI!\r\n");
+
+    // memory map
+
+
+    EFI_MEMORY_DESCRIPTOR *memmap = NULL;
+    UINTN memmap_size = 0;
+    UINTN map_key;
+    UINTN desc_size;
+    UINT32 desc_version;
+
+    get_memory_map:
+    memmap = NULL;
+    memmap_size = 0;
+
+    Status = uefi_call_wrapper(BS->GetMemoryMap, 5,
+        &memmap_size,
+        memmap,
+        &map_key,
+        &desc_size,
+        &desc_version
+    );
+    if (Status != EFI_BUFFER_TOO_SMALL) PANIC(L"GetMemoryMap did not return BUFFER_TOO_SMALL");
+    memmap_size += 2 * desc_size;
+
+    Status = uefi_call_wrapper(BS->AllocatePool, 3,
+        EfiLoaderData,
+        memmap_size,
+        (void**)&memmap
+    );
+
+    Status = uefi_call_wrapper(BS->GetMemoryMap, 5,
+        &memmap_size,
+        memmap,
+        &map_key,
+        &desc_size,
+        &desc_version
+    );
+
+    Status = uefi_call_wrapper(BS->ExitBootServices, 2, ImageHandle, map_key);
+    if (Status == EFI_INVALID_PARAMETER) {
+        Print(L"fail\r\n");
+        uefi_call_wrapper(BS->FreePool, 1, memmap);
+        goto get_memory_map;
+    }
+
+    // no more UEFI
+
+    bp->efi_info.efi_memmap = (UINT32)(UINTN)memmap;
+    bp->efi_info.efi_memmap_hi = (UINT32)(((UINTN)memmap) >> 32);
+    bp->efi_info.efi_memmap_size = memmap_size;
+    bp->efi_info.efi_memdesc_size = desc_size;
+    bp->efi_info.efi_memdesc_version = desc_version;
+
+    UINTN entries = memmap_size / desc_size;
+    EFI_MEMORY_DESCRIPTOR *d = memmap;
+
+    for (UINTN i = 0; i < entries && bp->e820_entries < E820_MAX_ENTRIES_ZEROPAGE; i++) {
+        struct boot_e820_entry *e = &bp->e820_table[bp->e820_entries];
+
+        e->addr = d->PhysicalStart;
+        e->size = d->NumberOfPages * 4096;
+
+        switch (d->Type) {
+            case EfiConventionalMemory:
+                e->type = 1; // RAM
+                break;
+            case EfiACPIReclaimMemory:
+                e->type = 3; // ACPI
+                break;
+            case EfiACPIMemoryNVS:
+                e->type = 4; // NVS
+                break;
+            default:
+                e->type = 2; // RESERVED
+        }
+
+        bp->e820_entries++;
+        d = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)d + desc_size);
+    }
+
+    entry(bp);
+    __builtin_unreachable();
+
 
 }
 
