@@ -120,7 +120,7 @@ struct efi_info {
     UINT32 	efi_memmap_size;
     UINT32 	efi_systab_hi;
     UINT32 	efi_memmap_hi;
-} __attribute__ ((packed));
+};
 
 struct boot_e820_entry {
     UINT64 addr;

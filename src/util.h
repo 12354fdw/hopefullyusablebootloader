@@ -64,5 +64,13 @@ static inline void* memcpy(void* dest,const void* src, size_t len) {
     return dest;
 }
 
+static inline void* memset(void* s, int c, size_t len) {
+    unsigned char* p = (unsigned char*)s;
+    while (len--) {
+        *p++ = (unsigned char)c;
+    }
+    return s;
+}
+
 
 #endif

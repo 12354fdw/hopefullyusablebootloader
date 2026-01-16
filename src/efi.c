@@ -80,7 +80,7 @@ EFI_STATUS EFIAPI efi_main(
     
     Print(L"\r\n\r\nBOOTING\r\n");
     BOOT_KERNEL_LBP(conf, Root, ImageHandle, SystemTable);
-    Print(L"kernel finished \r\n");
+    Print(L"You are not supposed to be here \r\n");
 
     // WAIT FOR KEY
     SystemTable->BootServices->WaitForEvent(
