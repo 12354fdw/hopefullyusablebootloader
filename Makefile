@@ -71,7 +71,7 @@ run: all
 	-drive if=pflash,format=raw,file=OVMF_VARS.4m.fd \
 	-drive file=uefi.img,format=raw \
 	-serial stdio \
-	-m 4G \
+	-m 6G \
 	-net none \
 	-display gtk
 

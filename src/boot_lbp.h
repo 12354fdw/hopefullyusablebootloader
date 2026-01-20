@@ -8,6 +8,8 @@
 #include <efi/efilib.h>
 #include <efi/x86_64/efibind.h>
 
+#include "config.h"
+
 void BOOT_KERNEL_LBP(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     Print(L"Using path 'LBP + EFI handover'\r\n");
     EFI_STATUS Status;
@@ -86,7 +88,7 @@ void BOOT_KERNEL_LBP(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE Ima
             4,
             AllocateAddress,
             EfiLoaderData,
-            EFI_SIZE_TO_PAGES(setupHeader->init_size),
+            EFI_SIZE_TO_PAGES(kernFileSize),
             &kernel_base
         );
     } else {
@@ -95,7 +97,7 @@ void BOOT_KERNEL_LBP(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE Ima
             align = 0x200000; // 2 MiB default
 
 
-        UINTN pages = EFI_SIZE_TO_PAGES(setupHeader->init_size + align);
+        UINTN pages = EFI_SIZE_TO_PAGES(kernFileSize + align);
 
         Status = uefi_call_wrapper(
             BS->AllocatePages,
@@ -114,8 +116,8 @@ void BOOT_KERNEL_LBP(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE Ima
 
     if (EFI_ERROR(Status)) PANIC(L"kernel alloc failed");
 
-    memcpy((void *)kernel_base,(void *)((UINT8 *)kernFileAddr + payload_offset),payload_size);
-    //memcpy((void *)kernel_base, (void *)kernFileAddr, kernFileSize);
+    //memcpy((void *)kernel_base,(void *)((UINT8 *)kernFileAddr + payload_offset),payload_size);
+    memcpy((void *)kernel_base, (void *)kernFileAddr, kernFileSize);
 
     Print(L"relocated to 0x%x\r\n",kernel_base);
     Print(L"allocating boot_params and filling it out\r\n");
@@ -132,15 +134,8 @@ void BOOT_KERNEL_LBP(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE Ima
     memset(bp,0,sizeof(*bp));
     memcpy(&bp->hdr,setupHeader,sizeof(struct setup_header));
 
-    bp->hdr.type_of_loader = 0xEF;   // custom loader
-    bp->hdr.loadflags |= (1 << 0);   // LOADED_HIGH
-
-    //bp->hdr.payload_offset = 0;
-    //bp->hdr.pref_address  = kernel_base;
-    //bp->hdr.handover_offset = setupHeader->handover_offset;
-
-
-    bp->hdr.code32_start = kernel_base;
+    bp->hdr.type_of_loader = 0x20;   // custom loader
+    
     Print(L"setting cmdline and initrd\r\n");
 
     CHAR8* cmdline;
@@ -244,59 +239,24 @@ void BOOT_KERNEL_LBP(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE Ima
     );
 
     UINT64 entry = kernel_base + bp->hdr.handover_offset;
+    serial_printf("entry point: 0x%x\n", entry);
 
     efi_handover_t handover = (efi_handover_t)(uintptr_t)entry;
 
     __asm__ volatile (
         "cli\n"
-
-        /* Clear direction flag */
         "cld\n"
-
-        /* Clear RBP */
-        "xor %%rbp, %%rbp\n"
-
-        /* Enable SSE */
-        "mov %%cr0, %%rax\n"
-        "and $~(1 << 2), %%rax\n"   /* clear EM */
-        "and $~(1 << 3), %%rax\n"   /* clear TS */
-        "mov %%rax, %%cr0\n"
-
-        "mov %%cr4, %%rax\n"
-        "or  $(1 << 9), %%rax\n"    /* OSFXSR */
-        "or  $(1 << 10), %%rax\n"   /* OSXMMEXCPT */
-        "mov %%rax, %%cr4\n"
-
-        /* Clear debug registers */
-        "xor %%rax, %%rax\n"
-        "mov %%rax, %%dr0\n"
-        "mov %%rax, %%dr1\n"
-        "mov %%rax, %%dr2\n"
-        "mov %%rax, %%dr3\n"
-        "mov %%rax, %%dr6\n"
-        "mov %%rax, %%dr7\n"
-
-        /* Align stack to 16 bytes */
-        "and $~0xF, %%rsp\n"
-
-        /* Arguments per EFI handover ABI */
-        "mov %0, %%rdi\n"
-        "mov %1, %%rsi\n"
-        "mov %2, %%rdx\n"
-
-        "jmp *%3\n"
+        "jmp *%0\n"
         :
-        : "r"(ImageHandle),
-        "r"(SystemTable),
-        "r"(bp),
-        "r"(handover)
-        : "rax", "memory"
+        : "r"(handover),
+        "D"(ImageHandle),
+        "S"(SystemTable),
+        "d"(bp)
+        : "memory"
     );
 
+    //__builtin_unreachable();
 
-
-
-    __builtin_unreachable();
 
 }
 
