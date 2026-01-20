@@ -116,8 +116,8 @@ void BOOT_KERNEL_LBP(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE Ima
 
     if (EFI_ERROR(Status)) PANIC(L"kernel alloc failed");
 
-    //memcpy((void *)kernel_base,(void *)((UINT8 *)kernFileAddr + payload_offset),payload_size);
-    memcpy((void *)kernel_base, (void *)kernFileAddr, kernFileSize);
+    memcpy((void *)kernel_base,(void *)((UINT8 *)kernFileAddr + payload_offset),payload_size);
+    //memcpy((void *)kernel_base, (void *)kernFileAddr, kernFileSize);
 
     Print(L"relocated to 0x%x\r\n",kernel_base);
     Print(L"allocating boot_params and filling it out\r\n");
@@ -134,7 +134,12 @@ void BOOT_KERNEL_LBP(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE Ima
     memset(bp,0,sizeof(*bp));
     memcpy(&bp->hdr,setupHeader,sizeof(struct setup_header));
 
+    // boot_params field
     bp->hdr.type_of_loader = 0x20;   // custom loader
+    bp->hdr.handover_offset = 0;
+
+    bp->hdr.code32_start = kernel_base;
+
     
     Print(L"setting cmdline and initrd\r\n");
 
@@ -238,15 +243,20 @@ void BOOT_KERNEL_LBP(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE Ima
         struct boot_params *
     );
 
-    UINT64 entry = kernel_base + bp->hdr.handover_offset;
+    UINT64 entry =
+    kernel_base + setupHeader->handover_offset - payload_offset;
     serial_printf("entry point: 0x%x\n", entry);
 
     efi_handover_t handover = (efi_handover_t)(uintptr_t)entry;
+    //handover(ImageHandle, SystemTable, bp);
 
+    __builtin_unreachable();
+
+    
     __asm__ volatile (
         "cli\n"
         "cld\n"
-        "jmp *%0\n"
+        "call *%0\n"
         :
         : "r"(handover),
         "D"(ImageHandle),
@@ -254,6 +264,7 @@ void BOOT_KERNEL_LBP(struct config conf, EFI_FILE_PROTOCOL *Root, EFI_HANDLE Ima
         "d"(bp)
         : "memory"
     );
+
 
     //__builtin_unreachable();
 
