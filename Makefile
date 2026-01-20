@@ -12,7 +12,8 @@ format: compile
 	sudo mkdir -p /tmp/uefi-mount/EFI/BOOT
 	sudo cp BOOTX64.EFI /tmp/uefi-mount/EFI/BOOT/BOOTX64.EFI
 	sudo cp config /tmp/uefi-mount/config.txt
-	sudo cp /home/bob/Documents/linux/arch/x86/boot/bzImage /tmp/uefi-mount/kern.kern
+#	sudo cp /home/bob/Documents/linux/arch/x86/boot/bzImage /tmp/uefi-mount/kern.kern
+	sudo cp /boot/vmlinuz-linux-zen /tmp/uefi-mount/kern.kern
 #	sudo cp /boot/initramfs-linux-zen.img /tmp/uefi-mount/initrd.img
 
 	sudo umount /tmp/uefi-mount
@@ -31,7 +32,8 @@ compile:
 		-I/usr/include \
 		-I/usr/include/efi \
 		-I/usr/include/efi/x86_64 \
-		-c src/efi.c -o build/efi.o
+		-c src/efi.c -o build/efi.o \
+		-g -O0
 
 	ld.lld \
 		-shared \
@@ -69,7 +71,7 @@ run: all
 	-drive if=pflash,format=raw,file=OVMF_VARS.4m.fd \
 	-drive file=uefi.img,format=raw \
 	-serial stdio \
-	-m 256M \
+	-m 4G \
 	-net none \
 	-display gtk
 
